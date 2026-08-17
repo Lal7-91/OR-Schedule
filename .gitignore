@@ -10,3 +10,6 @@ __pycache__/
 
 # Env / secrets
 .env
+
+# Harness run logs (local artifacts, not committed)
+runs/

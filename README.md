@@ -22,8 +22,9 @@ scheduler -> constraint_checker -> priority_optimizer -> supervisor
 - **Constraint Checker** -- an LLM agent, but one that relies entirely on a
   deterministic tool (`validate_schedule`) for the actual hard-constraint
   check (no double-booked room, no double-booked surgeon, surgery must fit
-  within its room's operating hours). It turns the tool's raw output into a
-  critique; it never gets to override what the tool found.
+  within its room's operating hours, and every surgery must actually be
+  scheduled). It turns the tool's raw output into a critique; it never gets
+  to override what the tool found.
 - **Priority Optimizer** -- read-only. Advises on soft objectives (urgent
   cases scheduled earlier, balanced room load) without touching anything.
 - **Supervisor** -- reviews the schedule, the violations, and both workers'
@@ -39,7 +40,7 @@ until the schedule is accepted or `MAX_SUPERVISOR_ITERATIONS` is hit.
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -e ".[dev,ui]"
 cp .env.example .env   # then fill in OLLAMA_BASE_URL etc. below
 ```
 
@@ -76,25 +77,57 @@ Tool-calling reliability varies by model even among ones that claim
 support -- if the harness behaves oddly, try a different pulled model
 before assuming there's a harness bug.
 
+**If requests start hanging or timing out for no obvious reason**, restart
+the Ollama service on the host PC (`sudo systemctl restart ollama` inside
+WSL). A generation that gets cancelled client-side (e.g. hitting
+`OLLAMA_REQUEST_TIMEOUT_SECONDS`) can leave the server's inference slot
+wedged -- symptoms are requests that never even start processing (no
+`slot launch_slot_` line in `journalctl -u ollama`) even for a trivial
+prompt. A restart clears it; this is a known class of issue with local
+inference servers under GPU passthrough, not a harness bug.
+
 ## Running
 
 ```bash
-python -m harness.main                 # real run against Ollama
+python -m harness.main                 # real run against Ollama, pretty CLI report
 python -m harness.main --verbose       # + diagnostic output
 HARNESS_DRY_RUN=1 python -m harness.main   # trivial scripted model, no network/LLM needed
 
 pytest                                 # unit tests + scripted control-flow tests (no LLM needed)
-ruff check harness tests               # lint
+ruff check harness tests ui            # lint
 ```
 
 CLI flags: `--problem <path>` (default `data/toy_problem.yaml`),
 `--max-iterations <n>`, `--verbose`.
 
+## Dashboard (UI)
+
+```bash
+streamlit run ui/app.py
+```
+
+Opens a local web dashboard with two tabs:
+- **Live run** -- start a run and watch the 4 agents work in real time: which
+  agent is currently active, the schedule filling in, violations
+  appearing/clearing, and the supervisor's verdict each iteration.
+- **Past runs** -- browse and replay any previous run's full timeline.
+
+The sidebar shows whether your configured Ollama endpoint is currently
+reachable, so connectivity problems are obvious immediately.
+
+Under the hood, "Start run" launches `python -m harness.runner` as a
+background process, which streams the graph via LangGraph's `.stream()` API
+and appends one JSON event per finished agent step to `runs/<run_id>/events.jsonl`.
+The UI just polls that file every couple of seconds (`st.fragment(run_every=2)`)
+-- the running harness and the UI are two separate processes, so a slow/local
+model doesn't block the dashboard. `runs/` is gitignored (local artifacts).
+
 ## Project structure
 
 ```
 harness/
-  main.py              entry point (python -m harness.main)
+  main.py              CLI entry point (python -m harness.main), pretty report
+  runner.py            UI entry point (python -m harness.runner), streams JSONL events
   config.py            env-based Settings
   llm.py               Ollama connection + dry-run/scripted stand-ins
   state.py             HarnessState (the graph's shared blackboard)
@@ -108,10 +141,15 @@ harness/
     tools.py                LangChain tool wrappers around the store
     fixtures.py               loads a problem YAML into a ProblemInstance
   prompts/             one markdown system prompt per agent
+ui/
+  app.py               Streamlit dashboard (streamlit run ui/app.py)
+  components.py         shared rendering pieces (schedule table, violations, ...)
+  runs_store.py          reads runs/<run_id>/{meta.json,events.jsonl} off disk
 data/toy_problem.yaml  the toy scenario: 3 rooms, 3 surgeons, 6 surgeries
 tests/
   test_domain_models.py, test_constraints.py   Tier A: no LLM, no network
   test_graph_stub.py                            Tier B: scripted LLM, no network
+  test_runner.py                                 event-log format, no LLM, no network
 ```
 
 `domain/` is deliberately framework-agnostic and fully unit-testable on its
@@ -127,18 +165,22 @@ needs a harness reusable across problem domains.
 | `OLLAMA_API_KEY` | Dummy value; Ollama ignores it but the client requires one | `ollama` |
 | `MAX_SUPERVISOR_ITERATIONS` | Cap on revise-loop rounds | `5` |
 | `HARNESS_DRY_RUN` | `1` to skip the real LLM and run a trivial scripted model | `0` |
+| `OLLAMA_REQUEST_TIMEOUT_SECONDS` | Per-request timeout, so a stuck local model can't hang the harness forever | `90` |
+| `OLLAMA_MAX_RESPONSE_TOKENS` | Cap on tokens generated per agent reply | `512` |
 
 ## Non-goals
 
-Not a production scheduler; no persistence/database; single-run CLI, no
-auth or multi-user support; not aiming to beat MILP on solution quality --
-the point is the multi-agent harness mechanics, not the scheduling result.
+Not a production scheduler; no real database (run logs are just JSON files
+on disk); no auth or multi-user support; not aiming to beat MILP on
+solution quality -- the point is the multi-agent harness mechanics, not the
+scheduling result.
 
 ## Roadmap
 
-- Add a surgeon-availability-window hard constraint (4th constraint type).
+- Add a surgeon-availability-window hard constraint (5th check, alongside
+  the 4 already in `validate_schedule`).
 - Try swapping the hand-rolled supervisor routing for the official
   `langgraph-supervisor` package once the manual version is well understood.
-- Add streaming and LangGraph checkpointing.
-- Compare tool-calling reliability across a couple of different Ollama
-  models on the same toy problem.
+- Add LangGraph checkpointing (persist/resume mid-run state).
+- Compare tool-calling reliability and speed across a couple of different
+  Ollama models on the same toy problem.

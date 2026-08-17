@@ -127,17 +127,21 @@ reachable, so connectivity problems are obvious immediately.
 
 Under the hood, "Start run" launches `python -m harness.runner` as a
 background process, which streams the graph via LangGraph's `.stream()` API
-and appends one JSON event per finished agent step to `runs/<run_id>/events.jsonl`.
-The UI just polls that file every couple of seconds (`st.fragment(run_every=2)`)
--- the running harness and the UI are two separate processes, so a slow/local
-model doesn't block the dashboard. `runs/` is gitignored (local artifacts).
+and writes one row per finished agent step into `runs/harness.db` (SQLite,
+WAL mode so the UI can read while the runner writes). The UI just polls
+that DB every couple of seconds (`st.fragment(run_every=2)`) -- the running
+harness and the UI are two separate processes, so a slow/local model
+doesn't block the dashboard. `runs/` is gitignored (local artifacts);
+problem definitions (`data/*.yaml`) are deliberately kept as plain files
+instead, since they're small and worth being hand-editable/diffable.
 
 ## Project structure
 
 ```
 harness/
   main.py              CLI entry point (python -m harness.main), pretty report
-  runner.py            UI entry point (python -m harness.runner), streams JSONL events
+  runner.py            UI entry point (python -m harness.runner), streams run history to SQLite
+  db.py                SQLite schema + repository functions for run history
   config.py            env-based Settings
   llm.py               Ollama connection + dry-run/scripted stand-ins
   state.py             HarnessState (the graph's shared blackboard)
@@ -155,12 +159,12 @@ ui/
   app.py               Streamlit dashboard (streamlit run ui/app.py)
   problem_builder.py    interactive problem editor (horizon/rooms/surgeons/surgeries)
   components.py         shared rendering pieces (schedule table, violations, ...)
-  runs_store.py          reads runs/<run_id>/{meta.json,events.jsonl} off disk
+  runs_store.py          reads run history from runs/harness.db (SQLite) for the UI
 data/toy_problem.yaml  the toy scenario: 2-day horizon, 3 rooms, 3 surgeons, 6 surgeries
 tests/
   test_domain_models.py, test_constraints.py   Tier A: no LLM, no network
   test_graph_stub.py                            Tier B: scripted LLM, no network
-  test_runner.py                                 event-log format, no LLM, no network
+  test_runner.py                                 run-history DB format, no LLM, no network
 ```
 
 `domain/` is deliberately framework-agnostic and fully unit-testable on its
@@ -181,10 +185,11 @@ needs a harness reusable across problem domains.
 
 ## Non-goals
 
-Not a production scheduler; no real database (run logs are just JSON files
-on disk); no auth or multi-user support; not aiming to beat MILP on
-solution quality -- the point is the multi-agent harness mechanics, not the
-scheduling result.
+Not a production scheduler; no auth or multi-user support; not aiming to
+beat MILP on solution quality -- the point is the multi-agent harness
+mechanics, not the scheduling result. Run history lives in a local SQLite
+file, not a client/server database -- fine for one person running this on
+one machine, not built for concurrent multi-user access.
 
 ## Roadmap
 

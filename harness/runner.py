@@ -1,36 +1,21 @@
-"""Streams a harness run to a JSONL event log on disk, so a separate UI
+"""Streams a harness run into SQLite (harness/db.py), so a separate UI
 process can show live progress (and later replay past runs) without being
 in the same Python process as the run itself.
-
-Each run gets its own directory under `runs/<run_id>/`:
-  meta.json     -- static info about the run (problem, settings, status)
-  events.jsonl  -- one JSON object per line, appended as the graph executes
 """
 from __future__ import annotations
 
 import argparse
-import json
 import time
 import traceback
 from pathlib import Path
-from typing import Any
 
+from harness import db
 from harness.config import Settings, load_settings
 from harness.domain.fixtures import load_toy_problem
 from harness.domain.store import ScheduleStore
 from harness.graph import build_graph
 from harness.llm import build_llm
 from harness.state import make_initial_state
-
-RUNS_DIR = Path("runs")
-
-
-def _now() -> float:
-    return time.time()
-
-
-def _write_json(path: Path, data: dict) -> None:
-    path.write_text(json.dumps(data, indent=2))
 
 
 def new_run_id() -> str:
@@ -41,36 +26,23 @@ def run_and_log(
     run_id: str,
     problem_path: str,
     settings: Settings | None = None,
-    runs_dir: Path | None = None,
+    db_path: Path | str = db.DB_PATH,
 ) -> None:
     settings = settings or load_settings()
-    run_dir = (runs_dir or RUNS_DIR) / run_id
-    run_dir.mkdir(parents=True, exist_ok=True)
-    events_path = run_dir / "events.jsonl"
-    meta_path = run_dir / "meta.json"
+    conn = db.connect(db_path)
 
     problem = load_toy_problem(problem_path)
-    meta: dict[str, Any] = {
-        "run_id": run_id,
-        "problem_path": problem_path,
-        "problem": problem.model_dump(),
-        "model": settings.ollama_model,
-        "base_url": settings.ollama_base_url,
-        "max_iterations": settings.max_iterations,
-        "dry_run": settings.dry_run,
-        "status": "running",
-        "started_at": _now(),
-        "finished_at": None,
-        "final_verdict": None,
-        "final_iteration": 0,
-    }
-    _write_json(meta_path, meta)
-
-    def emit(event: dict) -> None:
-        with events_path.open("a") as f:
-            f.write(json.dumps({**event, "ts": _now()}) + "\n")
-
-    emit({"event": "run_started"})
+    db.create_run(
+        conn,
+        run_id=run_id,
+        problem_path=problem_path,
+        problem=problem.model_dump(),
+        model=settings.ollama_model,
+        base_url=settings.ollama_base_url,
+        max_iterations=settings.max_iterations,
+        dry_run=settings.dry_run,
+    )
+    db.append_event(conn, run_id, "run_started")
 
     try:
         store = ScheduleStore(problem)
@@ -81,18 +53,15 @@ def run_and_log(
         for chunk in app.stream(state, stream_mode="updates"):
             for node_name, update in chunk.items():
                 state = {**state, **update}
-                emit({"event": "node_finished", "node": node_name, "state": state})
+                db.append_event(conn, run_id, "node_finished", node=node_name, state=state)
 
-        meta["status"] = "finished"
-        meta["final_verdict"] = state.get("verdict")
-        meta["final_iteration"] = state.get("iteration", 0)
-        emit({"event": "run_finished", "state": state})
+        db.finish_run(conn, run_id, "finished", state.get("verdict"), state.get("iteration", 0))
+        db.append_event(conn, run_id, "run_finished", state=state)
     except Exception as exc:  # noqa: BLE001 -- surfaced to the UI, not swallowed
-        meta["status"] = "error"
-        emit({"event": "run_error", "error": str(exc), "traceback": traceback.format_exc()})
+        db.finish_run(conn, run_id, "error", None, 0)
+        db.append_event(conn, run_id, "run_error", error=str(exc), traceback=traceback.format_exc())
     finally:
-        meta["finished_at"] = _now()
-        _write_json(meta_path, meta)
+        conn.close()
 
 
 def main() -> None:

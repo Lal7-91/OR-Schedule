@@ -20,7 +20,11 @@ class Violation(TypedDict):
 
 
 def _overlaps(a: Assignment, b: Assignment) -> bool:
-    return a.start_minutes < b.end_minutes and b.start_minutes < a.end_minutes
+    return (
+        a.date == b.date
+        and a.start_minutes < b.end_minutes
+        and b.start_minutes < a.end_minutes
+    )
 
 
 def _check_double_booked_rooms(assignments: list[Assignment]) -> list[Violation]:
@@ -32,8 +36,8 @@ def _check_double_booked_rooms(assignments: list[Assignment]) -> list[Violation]
                     type="double_booked_room",
                     surgery_id=a.surgery_id,
                     message=(
-                        f"Surgery {a.surgery_id} ({a.start}-{a.end}) overlaps surgery "
-                        f"{b.surgery_id} ({b.start}-{b.end}) in room {a.room_id}."
+                        f"Surgery {a.surgery_id} ({a.date} {a.start}-{a.end}) overlaps surgery "
+                        f"{b.surgery_id} ({b.date} {b.start}-{b.end}) in room {a.room_id}."
                     ),
                 )
             )
@@ -42,8 +46,8 @@ def _check_double_booked_rooms(assignments: list[Assignment]) -> list[Violation]
                     type="double_booked_room",
                     surgery_id=b.surgery_id,
                     message=(
-                        f"Surgery {b.surgery_id} ({b.start}-{b.end}) overlaps surgery "
-                        f"{a.surgery_id} ({a.start}-{a.end}) in room {b.room_id}."
+                        f"Surgery {b.surgery_id} ({b.date} {b.start}-{b.end}) overlaps surgery "
+                        f"{a.surgery_id} ({a.date} {a.start}-{a.end}) in room {b.room_id}."
                     ),
                 )
             )
@@ -60,7 +64,8 @@ def _check_double_booked_surgeons(assignments: list[Assignment]) -> list[Violati
                     surgery_id=a.surgery_id,
                     message=(
                         f"Surgeon {a.surgeon_id} is double-booked: surgery {a.surgery_id} "
-                        f"({a.start}-{a.end}) overlaps surgery {b.surgery_id} ({b.start}-{b.end})."
+                        f"({a.date} {a.start}-{a.end}) overlaps surgery {b.surgery_id} "
+                        f"({b.date} {b.start}-{b.end})."
                     ),
                 )
             )
@@ -70,7 +75,8 @@ def _check_double_booked_surgeons(assignments: list[Assignment]) -> list[Violati
                     surgery_id=b.surgery_id,
                     message=(
                         f"Surgeon {b.surgeon_id} is double-booked: surgery {b.surgery_id} "
-                        f"({b.start}-{b.end}) overlaps surgery {a.surgery_id} ({a.start}-{a.end})."
+                        f"({b.date} {b.start}-{b.end}) overlaps surgery {a.surgery_id} "
+                        f"({a.date} {a.start}-{a.end})."
                     ),
                 )
             )
@@ -108,6 +114,54 @@ def _check_operating_hours(
     return violations
 
 
+def _check_within_horizon(
+    assignments: list[Assignment], problem: ProblemInstance
+) -> list[Violation]:
+    violations: list[Violation] = []
+    for a in assignments:
+        if a.date not in problem.horizon:
+            violations.append(
+                Violation(
+                    type="date_outside_horizon",
+                    surgery_id=a.surgery_id,
+                    message=(
+                        f"Surgery {a.surgery_id} is scheduled on {a.date}, which is outside "
+                        f"the scheduling horizon: {problem.horizon}."
+                    ),
+                )
+            )
+    return violations
+
+
+def _check_surgeon_availability(
+    assignments: list[Assignment], problem: ProblemInstance
+) -> list[Violation]:
+    violations: list[Violation] = []
+    for a in assignments:
+        surgeon = problem.surgeon(a.surgeon_id)
+        if surgeon is None:
+            violations.append(
+                Violation(
+                    type="unknown_surgeon",
+                    surgery_id=a.surgery_id,
+                    message=f"Surgery {a.surgery_id} is assigned to unknown surgeon {a.surgeon_id}.",
+                )
+            )
+            continue
+        if not surgeon.is_available(a.date, a.start_minutes, a.end_minutes):
+            violations.append(
+                Violation(
+                    type="surgeon_unavailable",
+                    surgery_id=a.surgery_id,
+                    message=(
+                        f"Surgeon {a.surgeon_id} is not available on {a.date} "
+                        f"{a.start}-{a.end} for surgery {a.surgery_id}."
+                    ),
+                )
+            )
+    return violations
+
+
 def _check_all_surgeries_scheduled(
     schedule: Schedule, problem: ProblemInstance
 ) -> list[Violation]:
@@ -116,7 +170,7 @@ def _check_all_surgeries_scheduled(
         Violation(
             type="unscheduled_surgery",
             surgery_id=s.id,
-            message=f"Surgery {s.id} has not been assigned a room/time yet.",
+            message=f"Surgery {s.id} has not been assigned a room/date/time yet.",
         )
         for s in problem.surgeries
         if s.id not in scheduled
@@ -129,5 +183,7 @@ def validate_schedule(problem: ProblemInstance, schedule: Schedule) -> list[Viol
     violations += _check_double_booked_rooms(assignments)
     violations += _check_double_booked_surgeons(assignments)
     violations += _check_operating_hours(assignments, problem)
+    violations += _check_within_horizon(assignments, problem)
+    violations += _check_surgeon_availability(assignments, problem)
     violations += _check_all_surgeries_scheduled(schedule, problem)
     return violations

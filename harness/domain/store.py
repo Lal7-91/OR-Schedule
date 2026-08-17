@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from harness.domain.constraints import Violation, validate_schedule
-from harness.domain.models import Assignment, ProblemInstance, Schedule
+from harness.domain.models import Assignment, ProblemInstance, Schedule, to_minutes
 
 
 class ScheduleStore:
@@ -20,7 +20,7 @@ class ScheduleStore:
         scheduled = self.schedule.scheduled_surgery_ids()
         return [s.id for s in self.problem.surgeries if s.id not in scheduled]
 
-    def assign(self, surgery_id: str, room_id: str, start_time: str) -> dict:
+    def assign(self, surgery_id: str, room_id: str, date: str, start_time: str) -> dict:
         surgery = self.problem.surgery(surgery_id)
         if surgery is None:
             return {"ok": False, "reason": f"Unknown surgery_id: {surgery_id}"}
@@ -29,21 +29,30 @@ class ScheduleStore:
         if room is None:
             return {"ok": False, "reason": f"Unknown room_id: {room_id}"}
 
-        try:
-            from harness.domain.models import to_minutes
+        if date not in self.problem.horizon:
+            return {
+                "ok": False,
+                "reason": f"{date!r} is outside the scheduling horizon: {self.problem.horizon}",
+            }
 
+        try:
             end_minutes = to_minutes(start_time) + surgery.duration_minutes
             end_time = f"{end_minutes // 60:02d}:{end_minutes % 60:02d}"
         except ValueError:
             return {"ok": False, "reason": f"Invalid start_time format: {start_time!r} (expected 'HH:MM')"}
 
-        assignment = Assignment(
-            surgery_id=surgery.id,
-            room_id=room.id,
-            surgeon_id=surgery.required_surgeon_id,
-            start=start_time,
-            end=end_time,
-        )
+        try:
+            assignment = Assignment(
+                surgery_id=surgery.id,
+                room_id=room.id,
+                surgeon_id=surgery.required_surgeon_id,
+                date=date,
+                start=start_time,
+                end=end_time,
+            )
+        except ValueError:
+            return {"ok": False, "reason": f"Invalid date format: {date!r} (expected 'YYYY-MM-DD')"}
+
         self.schedule.add(assignment)
         return {"ok": True, "reason": None}
 

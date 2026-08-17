@@ -16,20 +16,36 @@ def make_scheduler_tools(store: ScheduleStore) -> list[StructuredTool]:
     """Tools for the Scheduler agent: read + write access to the schedule."""
 
     def get_current_schedule() -> dict:
-        """Return all current assignments as {surgery_id: {room_id, start, end, surgeon_id}}."""
+        """Return all current assignments as {surgery_id: {room_id, date, start, end, surgeon_id}}."""
         return store.current_schedule()
 
     def get_unscheduled_surgeries() -> list[str]:
-        """Return the IDs of surgeries that have not yet been assigned a room/time."""
+        """Return the IDs of surgeries that have not yet been assigned a room/date/time."""
         return store.unscheduled_surgery_ids()
 
-    def assign_surgery(surgery_id: str, room_id: str, start_time: str) -> dict:
-        """Assign surgery_id to room_id starting at start_time ('HH:MM', 24h clock).
+    def get_horizon() -> list[str]:
+        """Return the list of dates ('YYYY-MM-DD') surgeries may be scheduled on."""
+        return store.problem.horizon
+
+    def get_surgeon_availability(surgeon_id: str) -> dict:
+        """Return a surgeon's availability windows: {date, start, end} entries.
+
+        An empty list means the surgeon has no declared restriction and is
+        available any horizon date during room hours.
+        """
+        surgeon = store.problem.surgeon(surgeon_id)
+        if surgeon is None:
+            return {"error": f"Unknown surgeon_id: {surgeon_id}"}
+        return {"availability": [w.model_dump() for w in surgeon.availability]}
+
+    def assign_surgery(surgery_id: str, room_id: str, date: str, start_time: str) -> dict:
+        """Assign surgery_id to room_id on date ('YYYY-MM-DD') starting at
+        start_time ('HH:MM', 24h clock).
 
         The end time is derived automatically from the surgery's known duration.
         Returns {"ok": bool, "reason": str | None}.
         """
-        return store.assign(surgery_id, room_id, start_time)
+        return store.assign(surgery_id, room_id, date, start_time)
 
     def unassign_surgery(surgery_id: str) -> dict:
         """Remove an existing assignment for surgery_id, if any.
@@ -41,6 +57,8 @@ def make_scheduler_tools(store: ScheduleStore) -> list[StructuredTool]:
     return [
         StructuredTool.from_function(get_current_schedule),
         StructuredTool.from_function(get_unscheduled_surgeries),
+        StructuredTool.from_function(get_horizon),
+        StructuredTool.from_function(get_surgeon_availability),
         StructuredTool.from_function(assign_surgery),
         StructuredTool.from_function(unassign_surgery),
     ]
@@ -51,11 +69,11 @@ def make_readonly_schedule_tools(store: ScheduleStore) -> list[StructuredTool]:
     (Priority Optimizer)."""
 
     def get_current_schedule() -> dict:
-        """Return all current assignments as {surgery_id: {room_id, start, end, surgeon_id}}."""
+        """Return all current assignments as {surgery_id: {room_id, date, start, end, surgeon_id}}."""
         return store.current_schedule()
 
     def get_unscheduled_surgeries() -> list[str]:
-        """Return the IDs of surgeries that have not yet been assigned a room/time."""
+        """Return the IDs of surgeries that have not yet been assigned a room/date/time."""
         return store.unscheduled_surgery_ids()
 
     return [

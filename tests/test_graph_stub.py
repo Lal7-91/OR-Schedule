@@ -19,8 +19,12 @@ def tool_call_message(name: str, args: dict, call_id: str) -> AIMessage:
     return AIMessage(content="", tool_calls=[{"name": name, "args": args, "id": call_id}])
 
 
+DATE = "2026-08-18"
+
+
 def build_test_problem() -> ProblemInstance:
     return ProblemInstance(
+        horizon=[DATE],
         rooms=[
             Room(id="OR1", operating_start="08:00", operating_end="16:00"),
             Room(id="OR2", operating_start="08:00", operating_end="16:00"),
@@ -36,8 +40,16 @@ def build_test_problem() -> ProblemInstance:
 def build_scripted_script() -> list:
     return [
         # --- iteration 1: scheduler double-books OR1 ---
-        tool_call_message("assign_surgery", {"surgery_id": "S1", "room_id": "OR1", "start_time": "08:00"}, "c1"),
-        tool_call_message("assign_surgery", {"surgery_id": "S2", "room_id": "OR1", "start_time": "08:30"}, "c2"),
+        tool_call_message(
+            "assign_surgery",
+            {"surgery_id": "S1", "room_id": "OR1", "date": DATE, "start_time": "08:00"},
+            "c1",
+        ),
+        tool_call_message(
+            "assign_surgery",
+            {"surgery_id": "S2", "room_id": "OR1", "date": DATE, "start_time": "08:30"},
+            "c2",
+        ),
         "Scheduled S1 and S2.",  # scheduler's final answer, no more tool calls
         tool_call_message("validate_schedule", {}, "c3"),
         "S1 and S2 conflict in OR1 -- move one of them.",  # constraint checker's final answer
@@ -45,7 +57,11 @@ def build_scripted_script() -> list:
         '{"verdict": "revise", "feedback": "Fix the room conflict between S1 and S2 in OR1."}',  # supervisor
         # --- iteration 2: scheduler fixes it ---
         tool_call_message("unassign_surgery", {"surgery_id": "S2"}, "c4"),
-        tool_call_message("assign_surgery", {"surgery_id": "S2", "room_id": "OR2", "start_time": "08:00"}, "c5"),
+        tool_call_message(
+            "assign_surgery",
+            {"surgery_id": "S2", "room_id": "OR2", "date": DATE, "start_time": "08:00"},
+            "c5",
+        ),
         "Moved S2 to OR2 to resolve the conflict.",  # scheduler's final answer
         tool_call_message("validate_schedule", {}, "c6"),
         "No violations now.",  # constraint checker's final answer

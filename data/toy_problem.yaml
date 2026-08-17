@@ -1,6 +1,12 @@
 # Toy OR-scheduling problem for the agentic harness (milestone 1).
-# Deliberately small: 3 rooms, 3 surgeons, 6 surgeries, 3 hard constraints
-# (no double-booked room, no double-booked surgeon, within operating hours).
+# Deliberately small: 2-day horizon, 3 rooms, 3 surgeons, 6 surgeries, 5
+# hard constraints (no double-booked room, no double-booked surgeon,
+# within operating hours, within the scheduling horizon, surgeon
+# availability where declared, and every surgery must be scheduled).
+
+horizon:
+  - "2026-08-18"
+  - "2026-08-19"
 
 rooms:
   - id: OR1
@@ -16,7 +22,17 @@ rooms:
 surgeons:
   - id: SURG-A
   - id: SURG-B
+    # Restricted on purpose, to exercise the surgeon-availability constraint --
+    # SURG-B can only operate in the afternoon on the 18th, or any time on the 19th.
+    availability:
+      - date: "2026-08-18"
+        start: "13:00"
+        end: "16:00"
+      - date: "2026-08-19"
+        start: "08:00"
+        end: "16:00"
   - id: SURG-C
+    # No availability entries = unrestricted (any horizon date, any room hours).
 
 surgeries:
   - id: S1

@@ -1,6 +1,14 @@
 import pytest
 
-from harness.domain.models import Assignment, Room, Schedule, Surgery, to_minutes
+from harness.domain.models import (
+    Assignment,
+    AvailabilityWindow,
+    Room,
+    Schedule,
+    Surgeon,
+    Surgery,
+    to_minutes,
+)
 
 
 def test_to_minutes():
@@ -19,15 +27,44 @@ def test_surgery_defaults_priority_routine():
     assert s.priority == "routine"
 
 
+def test_assignment_rejects_bad_date_format():
+    with pytest.raises(ValueError):
+        Assignment(
+            surgery_id="S1", room_id="OR1", surgeon_id="SURG-A",
+            date="18-08-2026", start="08:00", end="09:00",
+        )
+
+
 def test_assignment_minutes_properties():
-    a = Assignment(surgery_id="S1", room_id="OR1", surgeon_id="SURG-A", start="08:00", end="09:00")
+    a = Assignment(
+        surgery_id="S1", room_id="OR1", surgeon_id="SURG-A",
+        date="2026-08-18", start="08:00", end="09:00",
+    )
     assert a.start_minutes == 480
     assert a.end_minutes == 540
 
 
+def test_surgeon_with_no_availability_is_unrestricted():
+    s = Surgeon(id="SURG-A")
+    assert s.is_available("2026-08-18", to_minutes("08:00"), to_minutes("09:00")) is True
+
+
+def test_surgeon_availability_window_enforced():
+    s = Surgeon(
+        id="SURG-B",
+        availability=[AvailabilityWindow(date="2026-08-18", start="13:00", end="16:00")],
+    )
+    assert s.is_available("2026-08-18", to_minutes("13:00"), to_minutes("14:00")) is True
+    assert s.is_available("2026-08-18", to_minutes("08:00"), to_minutes("09:00")) is False
+    assert s.is_available("2026-08-19", to_minutes("13:00"), to_minutes("14:00")) is False
+
+
 def test_schedule_add_remove_and_to_dict():
     schedule = Schedule()
-    a = Assignment(surgery_id="S1", room_id="OR1", surgeon_id="SURG-A", start="08:00", end="09:00")
+    a = Assignment(
+        surgery_id="S1", room_id="OR1", surgeon_id="SURG-A",
+        date="2026-08-18", start="08:00", end="09:00",
+    )
     schedule.add(a)
 
     assert schedule.get("S1") == a

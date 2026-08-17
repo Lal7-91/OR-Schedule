@@ -108,10 +108,26 @@ def _check_operating_hours(
     return violations
 
 
+def _check_all_surgeries_scheduled(
+    schedule: Schedule, problem: ProblemInstance
+) -> list[Violation]:
+    scheduled = schedule.scheduled_surgery_ids()
+    return [
+        Violation(
+            type="unscheduled_surgery",
+            surgery_id=s.id,
+            message=f"Surgery {s.id} has not been assigned a room/time yet.",
+        )
+        for s in problem.surgeries
+        if s.id not in scheduled
+    ]
+
+
 def validate_schedule(problem: ProblemInstance, schedule: Schedule) -> list[Violation]:
     assignments = schedule.all()
     violations: list[Violation] = []
     violations += _check_double_booked_rooms(assignments)
     violations += _check_double_booked_surgeons(assignments)
     violations += _check_operating_hours(assignments, problem)
+    violations += _check_all_surgeries_scheduled(schedule, problem)
     return violations

@@ -22,6 +22,8 @@ class Settings:
     ollama_api_key: str
     max_iterations: int
     dry_run: bool
+    request_timeout_seconds: float = 90.0
+    max_response_tokens: int = 512
 
 
 def load_settings() -> Settings:
@@ -31,4 +33,6 @@ def load_settings() -> Settings:
         ollama_api_key=os.environ.get("OLLAMA_API_KEY", "ollama"),
         max_iterations=int(os.environ.get("MAX_SUPERVISOR_ITERATIONS", "5")),
         dry_run=_env_bool("HARNESS_DRY_RUN", default=False),
+        request_timeout_seconds=float(os.environ.get("OLLAMA_REQUEST_TIMEOUT_SECONDS", "90")),
+        max_response_tokens=int(os.environ.get("OLLAMA_MAX_RESPONSE_TOKENS", "512")),
     )

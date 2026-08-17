@@ -45,6 +45,9 @@ def build_llm(settings: Settings) -> BaseChatModel:
         api_key=settings.ollama_api_key,
         model=settings.ollama_model,
         temperature=0,
+        timeout=settings.request_timeout_seconds,
+        max_tokens=settings.max_response_tokens,
+        max_retries=0,  # a stuck/slow local model shouldn't be retried 2-3x on top of its own timeout
     )
 
 

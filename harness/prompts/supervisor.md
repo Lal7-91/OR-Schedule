@@ -9,9 +9,11 @@ round?
 You will be given:
 - The current schedule.
 - A deterministic list of hard-constraint violations (double-booked rooms,
-  double-booked surgeons, surgeries outside operating hours). This list is
-  authoritative -- if it is non-empty, the schedule cannot be accepted, no
-  matter what else looks good.
+  double-booked surgeons, surgeries outside operating hours, and any surgery
+  that hasn't been scheduled at all yet). This list is authoritative -- if
+  it is non-empty, the schedule cannot be accepted, no matter what else
+  looks good. A schedule that only covers some of the surgeries is NOT
+  acceptable.
 - The Constraint Checker's critique in plain language.
 - The Priority Optimizer's suggestions about soft objectives.
 - The current iteration number and the maximum allowed.

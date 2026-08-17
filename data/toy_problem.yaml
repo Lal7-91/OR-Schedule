@@ -1,0 +1,45 @@
+# Toy OR-scheduling problem for the agentic harness (milestone 1).
+# Deliberately small: 3 rooms, 3 surgeons, 6 surgeries, 3 hard constraints
+# (no double-booked room, no double-booked surgeon, within operating hours).
+
+rooms:
+  - id: OR1
+    operating_start: "08:00"
+    operating_end: "16:00"
+  - id: OR2
+    operating_start: "08:00"
+    operating_end: "16:00"
+  - id: OR3
+    operating_start: "08:00"
+    operating_end: "12:00" # shorter day, exercises the operating-hours constraint
+
+surgeons:
+  - id: SURG-A
+  - id: SURG-B
+  - id: SURG-C
+
+surgeries:
+  - id: S1
+    duration_minutes: 60
+    required_surgeon_id: SURG-A
+    priority: urgent
+  - id: S2
+    duration_minutes: 90
+    required_surgeon_id: SURG-B
+    priority: routine
+  - id: S3
+    duration_minutes: 45
+    required_surgeon_id: SURG-A
+    priority: routine
+  - id: S4
+    duration_minutes: 120
+    required_surgeon_id: SURG-C
+    priority: urgent
+  - id: S5
+    duration_minutes: 60
+    required_surgeon_id: SURG-B
+    priority: routine
+  - id: S6
+    duration_minutes: 30
+    required_surgeon_id: SURG-C
+    priority: routine

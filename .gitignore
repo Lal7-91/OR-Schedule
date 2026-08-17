@@ -1,3 +1,12 @@
 .DS_Store
 Docs/
 CLAUDE.md
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+
+# Env / secrets
+.env

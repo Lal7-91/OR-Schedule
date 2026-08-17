@@ -9,12 +9,12 @@ TIME_FMT = "%H:%M"
 
 
 def to_minutes(hhmm: str) -> int:
-    t = datetime.strptime(hhmm, TIME_FMT)
+    t = datetime.strptime(hhmm, TIME_FMT)  # noqa: DTZ007 -- plain wall-clock, no timezone involved
     return t.hour * 60 + t.minute
 
 
 def _validate_hhmm(value: str) -> str:
-    datetime.strptime(value, TIME_FMT)
+    datetime.strptime(value, TIME_FMT)  # noqa: DTZ007 -- plain wall-clock, no timezone involved
     return value
 
 

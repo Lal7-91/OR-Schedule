@@ -45,13 +45,17 @@ def render_schedule(schedule_snapshot: dict) -> None:
     if not schedule_snapshot:
         st.info("No surgeries scheduled yet.")
         return
-    rows = sorted(schedule_snapshot.values(), key=lambda a: (a["room_id"], a["start"]))
+    rows = sorted(
+        schedule_snapshot.values(),
+        key=lambda a: (a.get("date", ""), a["room_id"], a["start"]),
+    )
     st.dataframe(
         [
             {
                 "Surgery": a["surgery_id"],
                 "Room": a["room_id"],
                 "Surgeon": a["surgeon_id"],
+                "Date": a.get("date", "—"),
                 "Start": a["start"],
                 "End": a["end"],
             }

@@ -21,10 +21,13 @@ scheduler -> constraint_checker -> priority_optimizer -> supervisor
   `assign_surgery` / `unassign_surgery` to place surgeries into rooms/times.
 - **Constraint Checker** -- an LLM agent, but one that relies entirely on a
   deterministic tool (`validate_schedule`) for the actual hard-constraint
-  check (no double-booked room, no double-booked surgeon, surgery must fit
-  within its room's operating hours, and every surgery must actually be
-  scheduled). It turns the tool's raw output into a critique; it never gets
-  to override what the tool found.
+  check: no double-booked room, no double-booked surgeon (both date-aware --
+  the same room/surgeon on different dates is fine), surgery must fit within
+  its room's operating hours, the assigned date must be within the
+  scheduling horizon, the required surgeon must actually be available at
+  that date/time (if they've declared any availability restriction), and
+  every surgery must actually be scheduled. It turns the tool's raw output
+  into a critique; it never gets to override what the tool found.
 - **Priority Optimizer** -- read-only. Advises on soft objectives (urgent
   cases scheduled earlier, balanced room load) without touching anything.
 - **Supervisor** -- reviews the schedule, the violations, and both workers'
@@ -106,7 +109,14 @@ CLI flags: `--problem <path>` (default `data/toy_problem.yaml`),
 streamlit run ui/app.py
 ```
 
-Opens a local web dashboard with two tabs:
+Opens a local web dashboard with three tabs:
+- **Problem builder** -- assemble a problem interactively instead of hand-
+  editing YAML: pick a scheduling horizon (date range), add/edit rooms
+  (with a time picker for operating hours), surgeons (with optional
+  availability-window restrictions -- leave a surgeon's availability empty
+  and they're free any horizon date within room hours), and surgeries
+  (duration, required surgeon, priority). Save it as a new problem file and
+  it becomes the default in the Live run tab.
 - **Live run** -- start a run and watch the 4 agents work in real time: which
   agent is currently active, the schedule filling in, violations
   appearing/clearing, and the supervisor's verdict each iteration.
@@ -143,9 +153,10 @@ harness/
   prompts/             one markdown system prompt per agent
 ui/
   app.py               Streamlit dashboard (streamlit run ui/app.py)
+  problem_builder.py    interactive problem editor (horizon/rooms/surgeons/surgeries)
   components.py         shared rendering pieces (schedule table, violations, ...)
   runs_store.py          reads runs/<run_id>/{meta.json,events.jsonl} off disk
-data/toy_problem.yaml  the toy scenario: 3 rooms, 3 surgeons, 6 surgeries
+data/toy_problem.yaml  the toy scenario: 2-day horizon, 3 rooms, 3 surgeons, 6 surgeries
 tests/
   test_domain_models.py, test_constraints.py   Tier A: no LLM, no network
   test_graph_stub.py                            Tier B: scripted LLM, no network
@@ -177,10 +188,9 @@ scheduling result.
 
 ## Roadmap
 
-- Add a surgeon-availability-window hard constraint (5th check, alongside
-  the 4 already in `validate_schedule`).
 - Try swapping the hand-rolled supervisor routing for the official
   `langgraph-supervisor` package once the manual version is well understood.
 - Add LangGraph checkpointing (persist/resume mid-run state).
 - Compare tool-calling reliability and speed across a couple of different
-  Ollama models on the same toy problem.
+  Ollama models on the same toy problem -- the added horizon/availability
+  search space makes convergence harder for a small model, worth measuring.

@@ -10,16 +10,24 @@ import sys
 import time
 from pathlib import Path
 
-import streamlit as st
-from components import check_ollama_reachable, render_run_state
-from runs_store import completed_nodes, latest_state, list_runs, load_events, load_meta
-
 # Explicit path insertion rather than relying on the editable install: under
 # Streamlit's threaded script execution, the `harness` package's editable-
 # install import hook doesn't reliably resolve in the script's own thread.
+# Must run before any local module (below) that itself imports `harness.*`.
 _REPO_ROOT = str(Path(__file__).resolve().parent.parent)
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
+
+import problem_builder
+import streamlit as st
+from components import check_ollama_reachable, render_run_state
+from runs_store import (
+    completed_nodes,
+    latest_state,
+    list_runs,
+    load_events,
+    load_meta,
+)
 
 from harness.config import load_settings
 from harness.runner import new_run_id
@@ -62,7 +70,8 @@ def live_run_view() -> None:
 
     with st.form("start_run_form"):
         col1, col2, col3 = st.columns([2, 1, 1])
-        problem_path = col1.text_input("Problem file", value="data/toy_problem.yaml")
+        default_problem_path = st.session_state.get("pb_save_path", "data/toy_problem.yaml")
+        problem_path = col1.text_input("Problem file", value=default_problem_path)
         max_iterations = col2.number_input("Max iterations", min_value=1, max_value=20, value=5)
         dry_run = col3.checkbox("Dry run (no LLM)", value=False)
         submitted = st.form_submit_button("Start run", type="primary")
@@ -145,7 +154,9 @@ st.caption("A 4-agent supervisor/worker LangGraph harness solving a toy OR-sched
 
 sidebar_connection_status()
 
-tab_live, tab_past = st.tabs(["Live run", "Past runs"])
+tab_builder, tab_live, tab_past = st.tabs(["Problem builder", "Live run", "Past runs"])
+with tab_builder:
+    problem_builder.render()
 with tab_live:
     live_run_view()
 with tab_past:

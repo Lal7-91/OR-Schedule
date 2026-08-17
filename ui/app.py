@@ -14,6 +14,13 @@ import streamlit as st
 from components import check_ollama_reachable, render_run_state
 from runs_store import completed_nodes, latest_state, list_runs, load_events, load_meta
 
+# Explicit path insertion rather than relying on the editable install: under
+# Streamlit's threaded script execution, the `harness` package's editable-
+# install import hook doesn't reliably resolve in the script's own thread.
+_REPO_ROOT = str(Path(__file__).resolve().parent.parent)
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
 from harness.config import load_settings
 from harness.runner import new_run_id
 

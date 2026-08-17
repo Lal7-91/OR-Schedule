@@ -13,3 +13,7 @@ __pycache__/
 
 # Harness run logs (local artifacts, not committed)
 runs/
+
+# Streamlit agent-skill symlinks (environment-specific, auto-installed)
+.agents/skills/developing-with-streamlit
+.claude/skills/developing-with-streamlit
